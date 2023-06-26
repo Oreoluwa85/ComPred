@@ -1,4 +1,11 @@
-This is a series of scripts to produce a taxonomy tree adjacent heatmap corresponding to presence or absence of any protein component of each protein complex identified in the EBI Complex Portal (Meldal et al, 2021). The scripts require python3, SQLite3 and Perl. The scripts are to be called as follows:
+This was a series of scripts to produce a taxonomy tree adjacent heatmap corresponding to presence or absence of any protein component of each protein complex identified in the EBI Complex Portal (Meldal et al, 2021). Because these scripts required python3, SQLite3 and Perl, they have been rewritten and superceded by a python only version. The old scripts should still work. Instructions are at the bottom of the page.
+
+BuildSearchTable.py: The python only version downloads the latest release of complex portal data as TSVs files, then concatenates them into a single table. A FASTA file corresponding to protein sequences for each protein in this table is used to generate a search a protein sequence database using DIAMOND BLASTp. The file then takes a newick file of NCBI taxids and aligns with presence or absence values of homologs to each Comple Portal complex, where a presence of any component corresponds to a complex presence and an absence of all components corresponds to a complex absence. The image can be viewed inline, or output as a png using ete3.tree.show functionality.
+
+diamond_blastp_query.sh: The protein sequence search query code
+
+
+The old scripts are to be called as follows:
 
 Complex_Portal_Retrieval.sh: Download latest release of complex portal data as TSVs and corresponding FASTA files, then concatenate each into a single query file. The FASTA file is for querying the database and the TSV (which has complex and protein accession numbers) is for indexing the results of the sequence search
 diamond_blastp_query.sh: This is the diamond protein search script that searches a DIAMOND database for the FASTA sequences in the concatenated file from the previous step.

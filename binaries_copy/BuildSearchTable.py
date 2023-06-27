@@ -2,13 +2,14 @@
 import pandas as pd
 import ftplib as ftplib
 import Bio
+import os
+import sys
 from io import BytesIO as BytesIO
 from os.path import join
 from pandas.api.types import CategoricalDtype
 from ete3 import NCBITaxa, Tree, TreeStyle, BarChartFace 
 from Bio import Entrez
-import os
-import sys
+
 %matplotlib inline
 ncbi = NCBITaxa()
 # If this doesn't work run this database update!!
@@ -67,7 +68,6 @@ Complexes = fetch_files('ftp.ebi.ac.uk','','')
 
 # Remove stoichiometric data and split accessions in ID column
 Complexes['Identifiers (and stoichiometry) of molecules in complex'] = Complexes['Identifiers (and stoichiometry) of molecules in complex'].str.replace('\(.\)','').str.split('|')
-Complexes
 # Flatten Taxon ID list and move it to end of duplicate dataframe
 flattened_col = pd.DataFrame([(index, value) for (index, values) in Complexes['Identifiers (and stoichiometry) of molecules in complex'].iteritems() for value in values],
                              columns=['index', 'Identifiers (and stoichiometry) of molecules in complex']).set_index('index')
@@ -75,7 +75,7 @@ Complexes2 = Complexes.drop('Identifiers (and stoichiometry) of molecules in com
 Complexes2.dtypes
 Complexes2
 
-# Write the whole dataframe to a file
+# Uncomment the next line to write the whole dataframe to a file
 # Complexes2.to_csv('Complexes2.csv')
 
 # Rewrite column dtypes
@@ -129,7 +129,7 @@ Treetaxa = Mergeattempt['taxid'].explode().unique()
 Treetaxa = Treetaxa[~pd.isnull(Treetaxa)]
 
 # If this doesn't work because of Keyerrors, find out which ones they are:
-Treetaxa.tolist().index('2461416')
+# Treetaxa.tolist().index('2461416')
 
 # Remove them!
 l = Treetaxa.tolist()
@@ -162,6 +162,38 @@ matrix.set_index('taxid')
 
 # For ClusterTree, tree has to be a newick string (can't be phylo object), matrix has to be a string
 matrix_string = matrix.rename(columns={'taxid': '\#Names'}).to_csv(None, sep='\t', index=False)[1:] #matrix
+
+# WORKABLE SUBSET
+# Troubleshooting
+t = ClusterTree('/Users/of2/Documents/Complex_Portal/ComPred/Eukaryotic_subset.nwk', text_array=matrix_string)
+
+# Lepidoptera
+#tree = ncbi.get_topology([7088])
+#u = tree.write()
+t = ClusterTree(u,text_array=matrix_string)
+
+# Rename tree nodes - May need to comment out or do this after connecting the heatmap
+#ncbi.annotate_tree(t, taxid_attr="name")
+
+# Try and get labels - from https://stackoverflow.com/questions/51366712/adding-labels-to-heatmaps-in-ete3
+labels = matrix_string.split('\n')[0].split('\t')[1:]
+axisface = BarChartFace([0]*len(labels), width=320, height=0, labels=labels, label_fsize=1, max_value=0.5, scale_fsize=6)
+axisface.margin_bottom = 30
+
+ts = TreeStyle()
+ts.show_leaf_name = True 
+
+ts.aligned_foot.add_face(axisface, column=0)
+ts.show_border = False
+ts.margin_top = 50
+for node in t.traverse():
+    node_name = str(join(node.name))
+    if node_name:  # Check if node_name is not empty
+        node.name = ncbi.get_taxid_translator([node_name])
+#ncbi.annotate_tree(t, taxid_attr="name")
+t.render("%%inline", 'heatmap', w=1583, units="mm", tree_style=ts)
+#################################################
+# Full set
 
 t = ClusterTree('Treetaxa.nwk', text_array=matrix_string)
                 #matrix.head().to_csv(None, sep='\t')) 
@@ -225,30 +257,6 @@ print(annotation_counts)
 ligase_entries = annotation_counts[annotation_counts.index.str.contains('ligase', case=False)]
 print(ligase_entries)
 
-# WORKABLE SUBSET
-# Troubleshooting
-t = ClusterTree('/Users/of2/Documents/Complex_Portal/ComPred/Eukaryotic_subset.nwk', text_array=matrix_string)
-
-# Rename tree nodes - May need to comment out or do this after connecting the heatmap
-#ncbi.annotate_tree(t, taxid_attr="name")
-
-# Try and get labels - from https://stackoverflow.com/questions/51366712/adding-labels-to-heatmaps-in-ete3
-labels = matrix_string.split('\n')[0].split('\t')[1:]
-axisface = BarChartFace([0]*len(labels), width=320, height=0, labels=labels, label_fsize=1, max_value=0.5, scale_fsize=6)
-axisface.margin_bottom = 30
-
-ts = TreeStyle()
-ts.show_leaf_name = True 
-
-ts.aligned_foot.add_face(axisface, column=0)
-ts.show_border = False
-ts.margin_top = 50
-for node in t.traverse():
-    node_name = str(join(node.name))
-    if node_name:  # Check if node_name is not empty
-        node.name = ncbi.get_taxid_translator([node_name])
-#ncbi.annotate_tree(t, taxid_attr="name")
-t.render("%%inline", 'heatmap', w=1583, units="mm", tree_style=ts)
 
 
 for node in t.traverse():

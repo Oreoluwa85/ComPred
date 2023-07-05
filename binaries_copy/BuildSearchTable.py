@@ -4,10 +4,11 @@ import ftplib as ftplib
 import Bio
 import os
 import sys
+import re
 from io import BytesIO as BytesIO
 from os.path import join
 from pandas.api.types import CategoricalDtype
-from ete3 import NCBITaxa, Tree, TreeStyle, BarChartFace 
+from ete3 import NCBITaxa, Tree, TreeStyle, BarChartFace, NodeStyle, TextFace
 from Bio import Entrez
 
 %matplotlib inline
@@ -16,12 +17,12 @@ ncbi = NCBITaxa()
 # ncbi.update_taxonomy_database()
 
 # Set datatypes
-dtypes = {'#Complex ac': 'category',
+my_dtypes = {'#Complex ac': 'category',
   'Recommended name': 'category',
   'Aliases for complex': 'category',
   'Taxonomy identifier': 'category',
-  'Evidence Code': 'string',
-  'Experimental evidence': 'string',
+  'Evidence Code': 'category',
+  'Experimental evidence': 'category',
   'Go Annotations': 'string',
   'Cross references': 'string',
   'Description': 'string',
@@ -58,7 +59,7 @@ def fetch_files(site, username, password, directory: str = '/pub/databases/intac
                 ftp.retrbinary('RETR ' + file_, flo.write)
                 flo.seek(0)
                 df = pd.read_csv(flo, na_values=['_'], sep='\t', 
-                dtype = dtypes
+                dtype = my_dtypes
                 # Change column data types (Python Course Lesson 1 - cell 45) 
     #            dtype = {name:'string' for name in Complexes2.select_dtypes('object').columns}
             )
@@ -72,11 +73,12 @@ Complexes['Identifiers (and stoichiometry) of molecules in complex'] = Complexes
 flattened_col = pd.DataFrame([(index, value) for (index, values) in Complexes['Identifiers (and stoichiometry) of molecules in complex'].iteritems() for value in values],
                              columns=['index', 'Identifiers (and stoichiometry) of molecules in complex']).set_index('index')
 Complexes2 = Complexes.drop('Identifiers (and stoichiometry) of molecules in complex', axis=1).join(flattened_col)
-Complexes2.dtypes
+Complexes2.dtypes # To check what the dtypes are
+Complexes2 = Complexes2.astype(my_dtypes)
 Complexes2
 
 # Uncomment the next line to write the whole dataframe to a file
-# Complexes2.to_csv('Complexes2.csv')
+Complexes2.to_csv('Complexes2.csv')
 
 # Rewrite column dtypes
 # dtype = {name:'string' for name in Complexes2.select_dtypes('object').columns},{name:'string' for name in Complexes2.select_dtypes('int64').columns}
@@ -86,10 +88,10 @@ Complexes2
 # Load in results table - taxid needs to be string to split it later
 dtypesa = {'query': 'category',
            'taxid': 'string',
-           'orthologs': 'string',
-           'identity': 'float64',
-           'evalue': 'float64',
-           'bitscore': 'float64'}
+           'orthologs': 'category',#string
+           'identity': 'category',#float64
+           'evalue': 'category',#float64
+           'bitscore': 'category'}#float64
 
 blastp = pd.read_csv(
     'Diamond_blastp_nr_results.tsv',
@@ -98,28 +100,41 @@ blastp = pd.read_csv(
     )
 
 # Drop columns for ease of use
-Complexes2 = Complexes2.drop(columns=['Aliases for complex', 'Evidence Code', 'Experimental evidence', 'Go Annotations', 'Cross references', 'Description', 'Complex properties', 'Complex assembly', 'Ligand', 'Disease', 'Agonist', 'Antagonist', 'Comment', 'Source', 'Expanded participant list'])
+""" Complexes2 = Complexes2.drop(columns=['Aliases for complex', 'Evidence Code', 'Experimental evidence', 'Go Annotations', 'Cross references', 'Description', 'Complex properties', 'Complex assembly', 'Ligand', 'Disease', 'Agonist', 'Antagonist', 'Comment', 'Source', 'Expanded participant list']) 
+ """ 
+Complexes2 = Complexes2.drop(columns=['Aliases for complex', 'Evidence Code', 'Experimental evidence', 'Go Annotations', 'Cross references', 'Complex properties', 'Complex assembly', 'Ligand', 'Disease', 'Agonist', 'Antagonist', 'Comment', 'Source', 'Expanded participant list']) # Description included here to aid pattern search
 
-# Change datatypes to category
+blastp[blastp.columns[1]] = blastp[blastp.columns[1]].astype('string').str.split(';')
+
+""" # Change datatypes to category
 Complexes2[Complexes2.columns[:4]] = Complexes2[Complexes2.columns[:4]].astype('category')
 blastp[blastp.columns[:3]] = blastp[blastp.columns[:3]].astype('category')
 blastp[blastp.columns[1]] = blastp[blastp.columns[1]].astype('string').str.split(';')
+ """
+""" # Merge everything
+Mergeattempt = Complexes2.merge(
+    blastp,
+    left_on=(['Identifiers (and stoichiometry) of molecules in complex']),
+    right_on=(['query']),
+    how='left'
+) """
 
-#Mergeattempt = Complexes2.merge(
-#    blastp,
-#    left_on=(['Identifiers (and stoichiometry) of molecules in complex']),
-#    right_on=(['query']),
-#    how='left'
-#)
-
-#20230608 - This is where particular complexes can be subsetted based on name
-pattern = 'mcm2|mcm3|mcm4|mcm5|mcm6|mcm7|Cdc45|RPA1|primase|DNA polymerase|RFC1|RFC2|RFC3|RFC4|RFC5|PCNA|Fen1'
-Mergeattempt = Complexes2[Complexes2['Recommended name'].str.contains(pattern, case=False, na=False)].merge(
+# 20230629 Merge keyword related ie ESCRT, spliceosome, DNA polymerase, trafficking, nucleus, flagellar, endoplasmic reticulum, telomere
+Mergeattempt = Complexes2[Complexes2['Description'].str.contains("flagell", case=False, na=False)].merge(
     blastp,
     left_on=(['Identifiers (and stoichiometry) of molecules in complex']),
     right_on=(['query']),
     how='left'
 )
+
+#20230608 - This is where particular complexes can be subsetted based on name - Merge trafficking related
+""" pattern = 'mcm2|mcm3|mcm4|mcm5|mcm6|mcm7|Cdc45|RPA1|primase|DNA polymerase|RFC1|RFC2|RFC3|RFC4|RFC5|PCNA|Fen1'
+Mergeattempt = Complexes2[Complexes2['Recommended name'].str.contains(pattern, case=False, na=False)].merge(
+    blastp,
+    left_on=(['Identifiers (and stoichiometry) of molecules in complex']),
+    right_on=(['query']),
+    how='left'
+) """
 
 # Retrieve taxids
 Treetaxa = Mergeattempt['taxid'].explode().unique()
@@ -133,7 +148,12 @@ Treetaxa = Treetaxa[~pd.isnull(Treetaxa)]
 
 # Remove them!
 l = Treetaxa.tolist()
-#l.remove('2461416')
+try:
+    l.remove('2461416')
+except:
+    print("Keyerrors already removed")
+else:
+    print("Keyerror removed")
 #l
 
 # Try again; THIS WORKS!
@@ -166,19 +186,73 @@ matrix_string = matrix.rename(columns={'taxid': '\#Names'}).to_csv(None, sep='\t
 # WORKABLE SUBSET
 # Troubleshooting
 t = ClusterTree('/Users/of2/Documents/Complex_Portal/ComPred/Eukaryotic_subset.nwk', text_array=matrix_string)
+# t = ClusterTree('/Users/of2/Documents/Complex_Portal/ComPred/Lepidoptera.nwk', text_array=matrix_string)
+# t = ClusterTree('/Users/of2/Documents/Complex_Portal/ComPred/Nematoda.nwk', text_array=matrix_string)
+
 
 # Lepidoptera
-#tree = ncbi.get_topology([7088])
-#u = tree.write()
-t = ClusterTree(u,text_array=matrix_string)
+""" tree = ncbi.get_topology([7088])
+u = tree.write(format=9,features=["sci_name", "rank"],format_root_node=False)
+tr = ClusterTree(u,text_array=matrix_string) """
 
+# Microsporidia
+# tree = ncbi.get_topology([278021,586133,31281,40302,27973,58839,6035,571949]) #Have genomes (GoaT)
+""" tree = ncbi.get_topology([876142,481877,578460,578461,586133,646526,657448,658444,723287,291195,881290,907965,935791,948595,986730,989654,989655,993615,288439,284813,279532,278021,174685,164912,148818,146866,83296,72359,58839,51541,40302,27973,6035,2248764,2670338,2732488,2873936,2984836,1866961,1805483,1805481,1485682,1358809,1355160,1354746,1288291,1240240,1178016,1176355,1081671,1081669,1037528,1003232,641309,227086,46433,37360,559292,5911,746128,296587,227086,595528,645134,431895,905079,44689,578462,670386,10228,9606,7227,6087,6035,5888,333668,5865,5811,5762,237631,4932,4896,4787,3988,3702,3218,3055,280463,2880]) #Rhizaria from 641309, subset from 5911 
+u = tree.write(format=9,features=["sci_name", "rank"],format_root_node=False)
+t = ClusterTree(u,text_array=matrix_string)
+ """
 # Rename tree nodes - May need to comment out or do this after connecting the heatmap
 #ncbi.annotate_tree(t, taxid_attr="name")
 
 # Try and get labels - from https://stackoverflow.com/questions/51366712/adding-labels-to-heatmaps-in-ete3
 labels = matrix_string.split('\n')[0].split('\t')[1:]
-axisface = BarChartFace([0]*len(labels), width=320, height=0, labels=labels, label_fsize=1, max_value=0.5, scale_fsize=6)
+axisface = BarChartFace([0]*len(labels), width=len(labels)*10, height=0, labels=labels, label_fsize=6, max_value=0.5, scale_fsize=6)
 axisface.margin_bottom = 30
+
+# Borrowed from alexjironkin - https://github.com/etetoolkit/ete/issues/100
+def make_branches_bigger(node, new_size):
+    node.img_style["hz_line_width"] = new_size # Change the horizotal lines stroke size
+    node.img_style["vt_line_width"] = new_size # Change the vertical lines stroke size
+#    node.img_style["vt_line_color"] = [val if str(node.name).split(':')[1] in key else "black" for key, val in branch_colors.items()][0]
+#    node.img_style["hz_line_color"] = [val if str(node.name).split(':')[1] in key else "black" for key, val in colors.items()][0]
+    for c in node.children:
+        make_branches_bigger(c, new_size)
+make_branches_bigger(t, 4)
+
+# Made this myself - don't know if it works
+branch_colors = {"Sar":"Orange", "Opisthokonta":"Red", "Dictyostelia":"Purple", "Viridiplantae":"Green", "Guillardia theta CCMP2712":"Khaki", "Naegleria gruberi":"Magenta", "Emiliania huxleyi CCMP1516":"Cyan", "Fungi":"Blue"}
+leaf_highlights = {"Bigelowiella natans":"Red", "Encephalitozoon cuniculi":"Red"}
+
+""" for node in t.traverse():
+    for node in t.get_children():
+        for descendant in node.iter_descendants():
+            node.img_style["vt_line_color"] = branch_colors.get(node.sci_name, "none")
+            node.img_style["hz_line_color"] = branch_colors.get(node.sci_name, "none")
+            for descendant in node.iter_descendants():
+                node.img_style["vt_line_color"] = branch_colors.get(node.sci_name, "none")
+                node.img_style["hz_line_color"] = branch_colors.get(node.sci_name, "none")
+                node.img_style["vt_line_color"] = branch_colors.get(node.sci_name, "none")
+                node.img_style["hz_line_color"] = branch_colors.get(node.sci_name, "none")
+ """
+""" for node in t.traverse():
+    for node in t.get_leaves():
+        node.img_style["fgcolor"] = leaf_highlights.get(node.sci_name, "none")
+ """
+for i in t.get_children():
+    for node in i.traverse():
+        #print(i.sci_name)
+        node.img_style["vt_line_color"] = branch_colors.get(i.sci_name, "none")
+        node.img_style["hz_line_color"] = branch_colors.get(i.sci_name, "none")
+
+#doesn't work
+#for node in t.get_children():
+#    node.add_features(color=branch_colors.get(node.sci_name, "none"))
+
+# not sure if works
+#for node in t.traverse():
+#    for descendant in node.iter_descendants():
+#        print(descendant.sci_name)
+#        node.add_features(color=branch_colors.get(node.name, "none"))
 
 ts = TreeStyle()
 ts.show_leaf_name = True 
@@ -186,12 +260,14 @@ ts.show_leaf_name = True
 ts.aligned_foot.add_face(axisface, column=0)
 ts.show_border = False
 ts.margin_top = 50
+#ts.title.add_face(TextFace("Conservation of ESCRT related\nprotein complex homologs", fsize=20), column=0)
 for node in t.traverse():
     node_name = str(join(node.name))
     if node_name:  # Check if node_name is not empty
-        node.name = ncbi.get_taxid_translator([node_name])
+#        node.name = ncbi.get_taxid_translator([node_name]) # Gets the taxid AND name
+        node.name = str(ncbi.get_taxid_translator([node_name])).split(':')[1].split('}')[0] # Gets the name only
 #ncbi.annotate_tree(t, taxid_attr="name")
-t.render("%%inline", 'heatmap', w=1583, units="mm", tree_style=ts)
+t.render("Euk_subset_flagellar.svg", 'heatmap', w=160, units="mm", tree_style=ts)
 #################################################
 # Full set
 
